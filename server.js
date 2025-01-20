@@ -70,5 +70,8 @@ console.log("Received hash: ",receivedHash)
     res.json({ status: 'failure', message: 'Payment verification failed!' });
   }
 });
-
+app.get('/',(req,res)=>{
+res.send(`<h1 style="text-align:center;color:green"
+  >Websitw is running</h1>`)
+})
 app.listen(PORT, () => console.log(`Server running on port vthis ${PORT}`));
