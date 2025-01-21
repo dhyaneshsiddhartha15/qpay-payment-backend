@@ -6,7 +6,7 @@ require('dotenv').config();
 const app = express();
 app.use(express.json());
 app.use(cors({
-  origin:"http://localhost:3000",
+  origin:"https://doha-payment.vercel.app",
   credentials: true,
 }));
 
@@ -15,7 +15,7 @@ const QPAY_URL = 'https://pguat.qcb.gov.qa/qcb-pg/api/gateway/2.0';
 const SECRET_KEY = process.env.QPAY_SECRET_KEY;
 const MERCHANT_ID = process.env.QPAY_MERCHANT_ID;
 // const BANK_ID = process.env.QPAY_BANK_ID;
-const REDIRECT_URL = 'http://localhost:3000/payment-response';
+const REDIRECT_URL = 'https://doha-payment.vercel.app/payment-response';
 
 // Generate Secure Hash
 function generateSecureHash(params) {
@@ -29,31 +29,39 @@ function generateSecureHash(params) {
 }
 
 
+
 app.post('/payment/request', (req, res) => {
-  const { amount, description } = req.body;
-  console.log("Amount received",amount, description);
-  const PUN = crypto.randomBytes(16).toString('hex');
-  const TransactionRequestDate = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
+  try {
+    const { amount, description } = req.body;
+    console.log("Amount received", amount, description);
+    
+    const PUN = crypto.randomBytes(16).toString('hex');
+    const TransactionRequestDate = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 
-  const paymentData = {
-    Action: '0',
-    Amount: amount,
-    BankID: 'QPAYPG03',
-    CurrencyCode: '634',
-    ExtraFields_f14: REDIRECT_URL,
-    Lang: 'en',
-    MerchantID: MERCHANT_ID,
-    MerchantModuleSessionID: PUN,
-    NationalID:'7483885725',
-    PUN,
-    PaymentDescription: description,
-    Quantity: '1',
-    TransactionRequestDate,
-  };
+    const paymentData = {
+      Action: '0',
+      Amount: amount,
+      BankID: 'QPAYPG03',
+      CurrencyCode: '634',
+      ExtraFields_f14: REDIRECT_URL,
+      Lang: 'en',
+      MerchantID: MERCHANT_ID,
+      MerchantModuleSessionID: PUN,
+      NationalID: '',
+      PUN,
+      PaymentDescription: description,
+      Quantity: '1',
+      TransactionRequestDate,
+    };
 
-  paymentData.SecureHash = generateSecureHash(paymentData);
-console.log(paymentData);
-  res.json({ url: QPAY_URL, paymentData });
+    paymentData.SecureHash = generateSecureHash(paymentData);
+    console.log(paymentData);
+    res.json({ url: QPAY_URL, paymentData });
+  } catch (error) {
+    console.log("Error is",error);
+    console.error('Error processing payment request:', error);
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
 });
 
 
