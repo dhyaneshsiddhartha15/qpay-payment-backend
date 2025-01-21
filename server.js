@@ -55,12 +55,13 @@ app.post('/payment/request', (req, res) => {
     };
 
     paymentData.SecureHash = generateSecureHash(paymentData);
-    console.log(paymentData);
-    res.json({ url: QPAY_URL, paymentData });
+    console.log("Final Response Sent to Frontend:", { url: QPAY_URL, paymentData });
+return res.json({ url: QPAY_URL, paymentData });
+
   } catch (error) {
     console.log("Error is",error);
     console.error('Error processing payment request:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+   return res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
