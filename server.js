@@ -81,7 +81,9 @@ app.post("/payment/response", paymentController.handlePaymentResponse);
 
 // ✅ Server Health Check Route
 app.get("/", (req, res) => {
-  res.send(`<h1 style="text-align:center;color:green">Website is Running</h1>`);
+  res.send(
+    `<h1 style="text-align:center;color:green">Website is Running #</h1>`
+  );
 });
 
 // ✅ Start Server
