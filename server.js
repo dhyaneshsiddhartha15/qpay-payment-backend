@@ -175,7 +175,7 @@ app.post("/payment/response", paymentController.handlePaymentResponse);
 // Health Check Route
 app.get("/", (req, res) => {
   res.send(
-    `<h1 style="text-align:center;color:green">Website is Running #</h1>`
+    `<h1 style="text-align:center;color:green">Website is Running # updated</h1>`
   );
 });
 
