@@ -146,6 +146,7 @@
 //     });
 //   }
 // };
+
 const crypto = require("crypto");
 const axios = require("axios");
 const querystring = require("querystring");
@@ -284,12 +285,16 @@ exports.initiatePayment = async (req, res) => {
       "Content-Type": "application/x-www-form-urlencoded",
     });
 
+    console.log("reached");
+
     // Send the request to QPay via POST
     const qpayResponse = await axios.post(
       process.env.QPAY_REDIRECT_URL,
       querystring.stringify(paymentData),
       { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
+
+    console.log("reached 2");
 
     console.log("✅ QPay Response:", qpayResponse.data);
 
