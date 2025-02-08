@@ -146,54 +146,74 @@
 //     });
 //   }
 // };
-
 const crypto = require("crypto");
+const axios = require("axios");
 const querystring = require("querystring");
 
-// Function to generate SHA-256 Secure Hash
-const generateSecureHash = (data, secretKey) => {
-  // Order fields as per QPay documentation
-  const hashString = [
-    secretKey, // Secret key should be the first parameter
-    data.Action || "0",
-    data.Amount,
-    data.BankID,
-    data.CurrencyCode || "634", // Currency Code for QAR
-    data.ExtraFields_f14,
-    data.Lang || "EN",
-    data.MerchantID,
-    data.MerchantModuleSessionID,
-    data.NationalID,
-    data.PUN,
-    data.PaymentDescription,
-    data.Quantity || "1",
-    data.TransactionRequestDate,
-  ]
-    .filter(Boolean) // Remove empty fields
-    .join("");
+// Correct Redirect URL for response
+const REDIRECT_URL = "https://doha-payment.vercel.app/payment-response";
 
-  return crypto.createHash("sha256").update(hashString).digest("hex");
+// Secure hash generation using the fixed field order per documentation
+const generateSecureHash = (data, secretKey) => {
+  console.log("🔍 Raw Data Before Hashing:", data);
+  const fieldsOrder = [
+    "Action",
+    "BankID",
+    "MerchantID",
+    "CurrencyCode",
+    "Amount",
+    "PUN",
+    "PaymentDescription",
+    "MerchantModuleSessionID",
+    "TransactionRequestDate",
+    "Quantity",
+    "ExtraFields_f14",
+    "Lang",
+    "NationalID",
+  ];
+  let hashString = secretKey;
+  fieldsOrder.forEach((field) => {
+    // Append field value (trimmed) or empty string if missing
+    hashString +=
+      data[field] !== undefined && data[field] !== null
+        ? data[field].toString().trim()
+        : "";
+  });
+  console.log("🔍 Hash String Before Hashing:", hashString);
+  // Convert digest to uppercase
+  return crypto
+    .createHash("sha256")
+    .update(hashString)
+    .digest("hex")
+    .toUpperCase();
 };
 
-// Controller function to initiate payment
+// Generate TransactionRequestDate in ddMMyyyyHHmmss format
+const generateTransactionDate = () => {
+  const now = new Date();
+  const dd = String(now.getDate()).padStart(2, "0");
+  const MM = String(now.getMonth() + 1).padStart(2, "0");
+  const yyyy = now.getFullYear();
+  const HH = String(now.getHours()).padStart(2, "0");
+  const mm = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return dd + MM + yyyy + HH + mm + ss;
+};
+
 exports.initiatePayment = async (req, res) => {
   try {
-    console.log("Initiating Payment...");
-    console.log(req.body);
+    console.log("🔄 Initiating Payment...");
 
     const {
       amount,
       bankId,
-      extraField,
       language,
       merchantId,
       pun,
       nationalId,
       description,
-      transactionRequestDate,
     } = req.body;
 
-    // Validate Required Fields
     const requiredFields = [
       "amount",
       "bankId",
@@ -202,7 +222,6 @@ exports.initiatePayment = async (req, res) => {
       "description",
     ];
     const missingFields = requiredFields.filter((field) => !req.body[field]);
-    // console.log(missingFields);
 
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -211,66 +230,107 @@ exports.initiatePayment = async (req, res) => {
       });
     }
 
-    // Construct Payment Data
+    // Convert amount to smallest currency unit (ISO formatted) by multiplying by 100
+    const formattedAmount = Math.round(parseFloat(amount) * 100).toString();
+
+    // Truncate PUN to maximum of 20 characters per QPay documentation
+    const truncatedPUN = pun.trim().substring(0, 20);
+
+    // Prepare payment data with trimmed values and the truncated PUN for both fields
     const paymentData = {
-      Action: "0", // Payment Action
-      Amount: amount,
-      BankID: bankId,
-      CurrencyCode: "634", // QAR Currency Code
-      ExtraFields_f14: process.env.QPAY_RESPONSE_URL, // Redirect URL
-      Lang: language || "EN",
-      MerchantID: merchantId,
-      MerchantModuleSessionID: pun, // Unique session ID
-      NationalID: nationalId || "",
-      PUN: pun, // Unique Payment Number
-      PaymentDescription: description,
-      Quantity: "1", // Default quantity
-      TransactionRequestDate: transactionRequestDate,
+      Action: "0",
+      Amount: formattedAmount,
+      BankID: bankId.trim(),
+      CurrencyCode: "634",
+      ExtraFields_f14: REDIRECT_URL,
+      // Use "En" as default language per documentation sample
+      Lang: language && language.trim() ? language.trim() : "En",
+      MerchantID: merchantId.trim(),
+      // Use the truncated PUN for both PUN and MerchantModuleSessionID
+      MerchantModuleSessionID: truncatedPUN,
+      PUN: truncatedPUN,
+      PaymentDescription: description.trim(),
+      Quantity: "1",
+      TransactionRequestDate: generateTransactionDate(),
+      NationalID:
+        nationalId && nationalId.trim() !== ""
+          ? nationalId.trim()
+          : "7483885725",
     };
-    console.log(paymentData);
 
-    // Generate Secure Hash
-    const secureHash = generateSecureHash(
+    // Log each field to verify values
+    console.log("✅ Payment Data Fields:");
+    Object.entries(paymentData).forEach(([key, value]) => {
+      console.log(`    ${key}: "${value}"`);
+    });
+
+    // Generate the secure hash using the secret key (trimmed) and fixed field order
+    paymentData.SecureHash = generateSecureHash(
       paymentData,
-      process.env.QPAY_SECRET_KEY
+      process.env.QPAY_SECRET_KEY.trim()
     );
-    paymentData.SecureHash = secureHash;
 
-    // QPay Redirect URL
-    const qpayRedirectUrl = process.env.QPAY_REDIRECT_URL;
+    console.log("✅ SecureHash Generated:", paymentData.SecureHash);
+    console.log(
+      "✅ Final Payment Data (Sent to QPay):",
+      JSON.stringify(paymentData, null, 2)
+    );
 
-    // Create Payment Query String
-    const paymentQueryString = querystring.stringify(paymentData);
+    console.log(
+      "🔍 Sending Request to QPay:",
+      querystring.stringify(paymentData)
+    );
+    console.log("🔍 Headers Used:", {
+      "Content-Type": "application/x-www-form-urlencoded",
+    });
 
-    // Redirect User to QPay Payment Page
-    // ✅ Update response structure to include `status`, `redirectUrl`
+    // Send the request to QPay via POST
+    const qpayResponse = await axios.post(
+      process.env.QPAY_REDIRECT_URL,
+      querystring.stringify(paymentData),
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+    );
+
+    console.log("✅ QPay Response:", qpayResponse.data);
+
     res.json({
       status: "success",
-      redirectUrl: `${qpayRedirectUrl}?${paymentQueryString}`,
-      paymentData, // Include full payment data for debugging
+      redirectUrl: process.env.QPAY_REDIRECT_URL,
+      paymentData,
     });
   } catch (error) {
-    console.log(error);
-
-    console.error("Payment initiation error:", error);
+    console.error(
+      "❌ Payment initiation error:",
+      error.response ? error.response.data : error.message
+    );
     res.status(500).json({
       status: "error",
       message: "Payment initiation failed",
+      details: error.response ? error.response.data : error.message,
     });
   }
 };
 
 exports.handlePaymentResponse = async (req, res) => {
   try {
-    console.log("Handling Payment Response...");
+    console.log("🔄 Handling Payment Response...");
+    console.log("✅ Full Response Data:", req.body); // ✅ Log full response data
 
-    const responseParams = req.body; // Payment response from QPay
+    const responseParams = req.body;
     const receivedSecureHash = responseParams["Response.SecureHash"];
 
-    // Remove SecureHash before validation
+    if (!receivedSecureHash) {
+      console.error("❌ Missing Secure Hash in Response");
+      return res.status(400).json({
+        status: "error",
+        message: "Missing Secure Hash in Response",
+      });
+    }
+
+    // ✅ Remove SecureHash before validation
     delete responseParams["Response.SecureHash"];
 
-    // Sort response parameters alphabetically
+    // ✅ Sort response parameters alphabetically
     const sortedParams = Object.keys(responseParams)
       .sort()
       .reduce((acc, key) => {
@@ -278,7 +338,7 @@ exports.handlePaymentResponse = async (req, res) => {
         return acc;
       }, {});
 
-    // Generate secure hash for validation
+    // ✅ Generate secure hash for validation
     const hashString =
       process.env.QPAY_SECRET_KEY + Object.values(sortedParams).join("");
     const generatedSecureHash = crypto
@@ -286,20 +346,28 @@ exports.handlePaymentResponse = async (req, res) => {
       .update(hashString)
       .digest("hex");
 
-    // Validate hash
+    console.log("✅ Generated Secure Hash:", generatedSecureHash);
+    console.log("✅ Received Secure Hash:", receivedSecureHash);
+
+    // ✅ Validate hash
     if (receivedSecureHash !== generatedSecureHash) {
+      console.error("❌ Secure Hash Validation Failed!");
       return res.status(400).json({
         status: "error",
         message: "Invalid secure hash",
       });
     }
 
-    // Payment status
+    // ✅ Extract Payment Details
     const paymentStatus = responseParams["Response.Status"];
     const confirmationID = responseParams["Response.ConfirmationID"];
     const transactionID = responseParams["Response.PUN"];
 
-    // need to implement DATABASE lOGIC here
+    console.log("✅ Payment Successful:", {
+      transactionID,
+      confirmationID,
+      paymentStatus,
+    });
 
     res.json({
       status: "success",
@@ -310,7 +378,7 @@ exports.handlePaymentResponse = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Payment response handling error:", error);
+    console.error("❌ Payment response handling error:", error);
     res.status(500).json({
       status: "error",
       message: "Failed to process payment response",

@@ -12,8 +12,9 @@ app.use(express.json());
 // ✅ Enable CORS for both Localhost and Production
 app.use(
   cors({
-    origin: ["https://doha-payment.vercel.app", "http://localhost:3000"],
+    origin: "*", // ✅ Allow QPay redirect requests
     credentials: true,
+    methods: ["GET", "POST"],
   })
 );
 
@@ -22,7 +23,6 @@ const QPAY_URL = "https://pguat.qcb.gov.qa/qcb-pg/api/gateway/2.0";
 const SECRET_KEY = process.env.QPAY_SECRET_KEY;
 const MERCHANT_ID = process.env.QPAY_MERCHANT_ID;
 const BANK_ID = "QPAYPG03"; // ✅ Default Bank ID
-const REDIRECT_URL = "https://doha-payment.vercel.app/payment-response";
 
 // ✅ Generate Secure Hash Function
 const generateSecureHash = (data) => {
