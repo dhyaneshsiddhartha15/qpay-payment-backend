@@ -1,82 +1,88 @@
-const express = require('express');
-const crypto = require('crypto');
-const cors = require('cors');
-require('dotenv').config();
+const express = require("express");
+const crypto = require("crypto");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const paymentController = require("./controllers/paymentController"); // ✅ Import payment controller
+
+dotenv.config();
 
 const app = express();
 app.use(express.json());
-app.use(cors({
-  origin:"https://doha-payment.vercel.app",
-  credentials: true,
-}));
+
+// ✅ Enable CORS for both Localhost and Production
+app.use(
+  cors({
+    origin: ["https://doha-payment.vercel.app", "http://localhost:3000"],
+    credentials: true,
+  })
+);
 
 const PORT = process.env.PORT || 8080;
-const QPAY_URL = 'https://pguat.qcb.gov.qa/qcb-pg/api/gateway/2.0';
+const QPAY_URL = "https://pguat.qcb.gov.qa/qcb-pg/api/gateway/2.0";
 const SECRET_KEY = process.env.QPAY_SECRET_KEY;
 const MERCHANT_ID = process.env.QPAY_MERCHANT_ID;
-const REDIRECT_URL = 'https://doha-payment.vercel.app/payment-response';
+const BANK_ID = "QPAYPG03"; // ✅ Default Bank ID
+const REDIRECT_URL = "https://doha-payment.vercel.app/payment-response";
 
-// Generate Secure Hash
+// ✅ Generate Secure Hash Function
 const generateSecureHash = (data) => {
   let hashString = SECRET_KEY;
-  Object.keys(data).sort().forEach(key => {
-    hashString += data[key];
-  });
-  return crypto.createHash('sha256').update(hashString).digest('hex');
+  Object.keys(data)
+    .sort()
+    .forEach((key) => {
+      hashString += data[key];
+    });
+  return crypto.createHash("sha256").update(hashString).digest("hex");
 };
 
-
-
-app.post('/payment/request', (req, res) => {
+// ✅ Middleware to Append `bankId`, `merchantId`, and `pun` Before Sending to Controller
+const appendPaymentData = (req, res, next) => {
   try {
+    console.log("🔄 Appending bankId, merchantId, and pun to request");
+
     const { amount, description } = req.body;
-    console.log("Amount received", amount, description);
-    
-    const amountInLowestUnit = Math.round(amount * 100);
-    const PUN = crypto.randomBytes(16).toString('hex');
-    const TransactionRequestDate = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14);
 
-    const paymentData = {
-      Action: '0',
-      Amount: amountInLowestUnit.toString(),
-      BankID: 'QPAYPG03',
-      CurrencyCode: '634',
-      ExtraFields_f14: REDIRECT_URL,
-      Lang: 'en',
-      MerchantID: MERCHANT_ID,
-      MerchantModuleSessionID: PUN,
-      NationalID: '7483885725',
-      PUN,
-      PaymentDescription: description,
-      Quantity: '1',
-      TransactionRequestDate,
-    };
+    if (!amount || !description) {
+      return res
+        .status(400)
+        .json({ error: "Amount and Description are required" });
+    }
 
-    paymentData.SecureHash = generateSecureHash(paymentData);
-    console.log(paymentData);
-    res.json({ url: QPAY_URL, paymentData });
+    // ✅ Generate Unique Payment ID (PUN)
+    const PUN = crypto.randomBytes(16).toString("hex");
+    const TransactionRequestDate = new Date()
+      .toISOString()
+      .replace(/[-:TZ.]/g, "")
+      .slice(0, 14);
+
+    // ✅ Append Additional Fields
+    req.body.bankId = BANK_ID;
+    req.body.merchantId = MERCHANT_ID;
+    req.body.pun = PUN;
+    req.body.transactionRequestDate = TransactionRequestDate;
+
+    console.log("✅ Updated Request Data:", req.body);
+    next(); // Move to the next middleware (payment controller)
   } catch (error) {
-    console.error('Error processing payment request:', error);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error("❌ Error in Middleware:", error);
+    return res.status(500).json({ error: "Internal Server Error" });
   }
+};
+
+// ✅ Payment Request API (Calls Payment Controller After Middleware)
+app.post(
+  "/payment/request",
+  appendPaymentData,
+  paymentController.initiatePayment
+);
+
+// ✅ Payment Response API (Verification)
+app.post("/payment/response", paymentController.handlePaymentResponse);
+
+// ✅ Server Health Check Route
+app.get("/", (req, res) => {
+  res.send(`<h1 style="text-align:center;color:green">Website is Running</h1>`);
 });
 
-
-app.post('/payment/response', (req, res) => {
-  const response = req.body;
-  console.log("Response from request is: ",response)
-  const receivedHash = response.SecureHash;
-console.log("Received hash: ",receivedHash)
-  const computedHash = generateSecureHash(response);
-  console.log("Computed hash: ",computedHash)
-  if (computedHash === receivedHash) {
-    res.json({ status: 'success', message: 'Payment verified!' });
-  } else {
-    res.json({ status: 'failure', message: 'Payment verification failed!' });
-  }
-});
-app.get('/',(req,res)=>{
-res.send(`<h1 style="text-align:center;color:green"
-  >Websitw is running</h1>`)
-})
-app.listen(PORT, () => console.log(`Server running on port vthis ${PORT}`));
+// ✅ Start Server
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
