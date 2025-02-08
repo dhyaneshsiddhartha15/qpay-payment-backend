@@ -202,7 +202,7 @@ exports.initiatePayment = async (req, res) => {
       "description",
     ];
     const missingFields = requiredFields.filter((field) => !req.body[field]);
-    console.log(missingFields);
+    // console.log(missingFields);
 
     if (missingFields.length > 0) {
       return res.status(400).json({
@@ -227,6 +227,7 @@ exports.initiatePayment = async (req, res) => {
       Quantity: "1", // Default quantity
       TransactionRequestDate: transactionRequestDate,
     };
+    console.log(paymentData);
 
     // Generate Secure Hash
     const secureHash = generateSecureHash(
@@ -242,9 +243,11 @@ exports.initiatePayment = async (req, res) => {
     const paymentQueryString = querystring.stringify(paymentData);
 
     // Redirect User to QPay Payment Page
+    // ✅ Update response structure to include `status`, `redirectUrl`
     res.json({
       status: "success",
       redirectUrl: `${qpayRedirectUrl}?${paymentQueryString}`,
+      paymentData, // Include full payment data for debugging
     });
   } catch (error) {
     console.log(error);
